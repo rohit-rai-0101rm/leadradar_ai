@@ -4,6 +4,23 @@
 Agentic lead-discovery tool. Phase 1 MVP: find restaurants in a Mumbai
 neighborhood with no/poor websites, audit them, score them, output JSON.
 
+## Phase 1 MVP status
+All 5 checkpoints complete as of 2026-07-10 (branch checkpoint-5-scoring-output,
+not yet merged). Full pipeline (discover → audit → verdict → score → JSON)
+runs end-to-end via `uv run python scripts/run_discovery.py` in ~70-80s
+against real Bandra, Mumbai data. SRS Section 11 Definition of Done:
+- [x] Checkpoints 1-5 complete and logged here
+- [x] One full run produces a JSON lead list with scores (output/leads_{timestamp}.json)
+- [x] Router survived a real (not simulated) provider quota exhaustion —
+      witnessed live during both the Checkpoint 4 and Checkpoint 5 runs
+      (Groq 429 → OpenRouter fallback)
+- [x] No hardcoded API keys in source files (all via .env / core/config.py)
+- [x] HOT-bucket leads agree by eye: all 6 HOT leads in the latest run are
+      businesses with no website at all — as bad as it gets
+Phase 1 MVP is functionally done. Everything past this point (CRM,
+outreach, multi-vertical/multi-city, dashboard, db/, features/, workers/,
+Docker, CI) is explicitly Phase 2+ per the SRS.
+
 ## Architecture decisions log
 - 2026-07-09: Checkpoint 1 done — LLM router built and tested with simulated
   429 fallback (mocked httpx.post, no real API calls). Cooldown default
@@ -81,6 +98,23 @@ neighborhood with no/poor websites, audit them, score them, output JSON.
   placeholder content on one real site, and an Instagram loading spinner
   on another).
 
+- 2026-07-10: Checkpoint 5 done (branch checkpoint-5-scoring-output) —
+  Scoring + Final JSON Output, the last Phase 1 checkpoint.
+  src/leadradar/tools/scoring_rules.py: score_lead(business, audit_result,
+  verdict) implements FR-4.1's additive scoring (no-website +40,
+  needs_redesign +30, low rating +10, no SSL +10, slow load +10) and
+  FR-4.2's bucketing (70+=HOT, 40-69=WARM, <40=COLD). SRS didn't define
+  numeric thresholds for "low rating" / "slow load", so picked and
+  documented defaults: rating < 4.0, load_time_ms > 3000 (3s, standard
+  page-abandonment cutoff) — revisit if these feel off in practice.
+  run_discovery.py now sorts businesses by score descending, writes the
+  full pipeline output (discovery + audit + verdict + scoring fields per
+  business) to output/leads_{timestamp}.json, and prints a final
+  NAME/BUCKET/SCORE/NEEDS_REDESIGN summary table. Live full-pipeline run:
+  20 businesses, JSON validated well-formed, 6 HOT leads (all no-website
+  businesses, scores 80-90) — genuinely bad by eye. Another real Groq 429
+  fallback fired during this run too (second time now, after Checkpoint 4).
+
 ## Known gotchas
 - GEMINI_KEY_1 not configured yet — Router currently only has groq +
   openrouter in its provider list until that's added. Gemini's image
@@ -99,3 +133,14 @@ neighborhood with no/poor websites, audit them, score them, output JSON.
   reusing one browser across a whole run — simplest correct option for
   now; if run_discovery.py ever creeps close to the 5-minute NFR-3 budget
   with a larger batch, switch to one shared browser + per-site pages.
+- scoring_rules.py's needs_redesign contribution is a flat +30 regardless
+  of severity — a site that's merely dated and a site that's a broken
+  "Coming Soon" placeholder score identically on that axis. FR-4 is
+  explicitly "MVP-simplified"; full multi-factor scoring is Phase 2.
+- NFR-5 (resumable runs — a crash mid-run shouldn't reprocess already-done
+  businesses) is NOT implemented. None of the 5 checkpoints' literal build
+  prompts asked for it, and it's not in the Section 11 Definition-of-Done
+  checklist, so it was left out of Phase 1 scope. Worth revisiting before
+  running larger batches, since a crash partway through currently means
+  starting over (and re-spending LLM/API quota on already-processed
+  businesses).

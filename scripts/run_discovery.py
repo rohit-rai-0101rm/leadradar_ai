@@ -1,19 +1,26 @@
-"""Phase 1 discovery + audit + verdict entrypoint: pulls real restaurant
-data for Bandra, Mumbai, audits each business's website, and gets an LLM
-verdict on whether it needs a redesign.
+"""Phase 1 full pipeline entrypoint: discovers real restaurants in Bandra,
+Mumbai, audits each website, gets an LLM verdict, scores each business as
+a lead, and writes the results to output/leads_{timestamp}.json.
 
 Run with: uv run python scripts/run_discovery.py
 Requires GOOGLE_PLACES_KEY in .env, plus at least one LLM provider key.
 """
 
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
 from leadradar.agents.verdict import get_verdict
 from leadradar.tools.places_client import discover_businesses
+from leadradar.tools.scoring_rules import score_lead
 from leadradar.tools.web_audit import audit_website
 
 BANDRA_LAT = 19.0596
 BANDRA_LNG = 72.8295
 RADIUS_M = 3000
 CATEGORY = "restaurant"
+
+OUTPUT_DIR = Path("output")
 
 NO_WEBSITE_AUDIT = {
     "loaded": False,
@@ -38,6 +45,24 @@ def verdict_businesses(businesses: list[dict]) -> None:
         business["verdict"] = get_verdict(business, business["audit"])
 
 
+def score_businesses(businesses: list[dict]) -> None:
+    for business in businesses:
+        business["scoring"] = score_lead(business, business["audit"], business["verdict"])
+
+
+def write_output_json(businesses: list[dict]) -> Path:
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = OUTPUT_DIR / f"leads_{timestamp}.json"
+
+    payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "businesses": businesses,
+    }
+    output_path.write_text(json.dumps(payload, indent=2))
+    return output_path
+
+
 def main() -> None:
     businesses = discover_businesses(
         lat=BANDRA_LAT, lng=BANDRA_LNG, radius_m=RADIUS_M, category=CATEGORY
@@ -48,6 +73,9 @@ def main() -> None:
 
     print("Getting LLM verdicts...\n")
     verdict_businesses(businesses)
+
+    score_businesses(businesses)
+    businesses.sort(key=lambda b: b["scoring"]["score"], reverse=True)
 
     name_width = max((len(b["name"] or "") for b in businesses), default=4)
     header = (
@@ -84,6 +112,21 @@ def main() -> None:
         verdict = business["verdict"]
         flag = "NEEDS REDESIGN" if verdict["needs_redesign"] else "looks fine"
         print(f"- {business['name']} [{flag}]: {verdict['reasoning']}")
+
+    print("\nLead summary (sorted by score, worst websites first):")
+    summary_header = f"{'NAME':<{name_width}}  {'BUCKET':<6}  {'SCORE':<5}  NEEDS_REDESIGN?"
+    print(summary_header)
+    print("-" * len(summary_header))
+    for business in businesses:
+        scoring = business["scoring"]
+        redesign = "yes" if business["verdict"]["needs_redesign"] else "no"
+        print(
+            f"{business['name']:<{name_width}}  {scoring['bucket']:<6}  "
+            f"{scoring['score']:<5}  {redesign}"
+        )
+
+    output_path = write_output_json(businesses)
+    print(f"\nWrote {len(businesses)} leads to {output_path}")
 
 
 if __name__ == "__main__":
