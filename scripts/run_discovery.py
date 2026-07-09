@@ -1,6 +1,7 @@
-"""Phase 1 full pipeline entrypoint: discovers real restaurants in Bandra,
-Mumbai, audits each website, gets an LLM verdict, scores each business as
-a lead, and writes the results to output/leads_{timestamp}.json.
+"""Full pipeline entrypoint: discovers real restaurants in Bandra, Mumbai,
+audits each website, gets an LLM verdict, scores each business as a lead,
+generates outreach email drafts for HOT/WARM leads, and writes the results
+to output/leads_{timestamp}.json.
 
 Run with: uv run python scripts/run_discovery.py
 Requires GOOGLE_PLACES_KEY in .env, plus at least one LLM provider key.
@@ -10,6 +11,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from leadradar.agents.outreach_agent import get_outreach_email
 from leadradar.agents.verdict import get_verdict
 from leadradar.tools.places_client import discover_businesses
 from leadradar.tools.scoring_rules import score_lead
@@ -21,6 +23,7 @@ RADIUS_M = 3000
 CATEGORY = "restaurant"
 
 OUTPUT_DIR = Path("output")
+OUTREACH_BUCKETS = ("HOT", "WARM")
 
 NO_WEBSITE_AUDIT = {
     "loaded": False,
@@ -50,6 +53,16 @@ def score_businesses(businesses: list[dict]) -> None:
         business["scoring"] = score_lead(business, business["audit"], business["verdict"])
 
 
+def outreach_businesses(businesses: list[dict]) -> None:
+    for business in businesses:
+        if business["scoring"]["bucket"] in OUTREACH_BUCKETS:
+            business["outreach"] = get_outreach_email(
+                business, business["audit"], business["verdict"]
+            )
+        else:
+            business["outreach"] = None
+
+
 def write_output_json(businesses: list[dict]) -> Path:
     OUTPUT_DIR.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -77,6 +90,9 @@ def main() -> None:
     score_businesses(businesses)
     businesses.sort(key=lambda b: b["scoring"]["score"], reverse=True)
 
+    print("Generating outreach drafts for HOT/WARM leads...\n")
+    outreach_businesses(businesses)
+
     name_width = max((len(b["name"] or "") for b in businesses), default=4)
     header = (
         f"{'NAME':<{name_width}}  {'WEBSITE':<30}  {'LOADED':<6}  {'SSL':<5}  "
@@ -103,9 +119,11 @@ def main() -> None:
         1 for b in businesses if b["website"] and not b["audit"]["loaded"]
     )
     needs_redesign_count = sum(1 for b in businesses if b["verdict"]["needs_redesign"])
+    outreach_count = sum(1 for b in businesses if b["outreach"] is not None)
     print(f"\n{no_website_count}/{len(businesses)} businesses have no website")
     print(f"{failed_to_load_count}/{len(businesses)} businesses have a website that failed to load")
     print(f"{needs_redesign_count}/{len(businesses)} businesses flagged as needing a redesign")
+    print(f"{outreach_count}/{len(businesses)} outreach drafts generated (HOT/WARM leads only)")
 
     print("\nVerdict details:")
     for business in businesses:
@@ -124,6 +142,11 @@ def main() -> None:
             f"{business['name']:<{name_width}}  {scoring['bucket']:<6}  "
             f"{scoring['score']:<5}  {redesign}"
         )
+
+    print("\nOutreach drafts (full bodies saved in the JSON output):")
+    for business in businesses:
+        if business["outreach"] is not None:
+            print(f"- {business['name']}: \"{business['outreach']['subject']}\"")
 
     output_path = write_output_json(businesses)
     print(f"\nWrote {len(businesses)} leads to {output_path}")

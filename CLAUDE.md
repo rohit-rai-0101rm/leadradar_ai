@@ -5,8 +5,8 @@ Agentic lead-discovery tool. Phase 1 MVP: find restaurants in a Mumbai
 neighborhood with no/poor websites, audit them, score them, output JSON.
 
 ## Phase 1 MVP status
-All 5 checkpoints complete as of 2026-07-10 (branch checkpoint-5-scoring-output,
-not yet merged). Full pipeline (discover → audit → verdict → score → JSON)
+All 5 checkpoints complete and merged into main as of 2026-07-10. Full
+pipeline (discover → audit → verdict → score → JSON)
 runs end-to-end via `uv run python scripts/run_discovery.py` in ~70-80s
 against real Bandra, Mumbai data. SRS Section 11 Definition of Done:
 - [x] Checkpoints 1-5 complete and logged here
@@ -114,6 +114,43 @@ Docker, CI) is explicitly Phase 2+ per the SRS.
   20 businesses, JSON validated well-formed, 6 HOT leads (all no-website
   businesses, scores 80-90) — genuinely bad by eye. Another real Groq 429
   fallback fired during this run too (second time now, after Checkpoint 4).
+
+- 2026-07-10: Phase 2 — Outreach Generation done (branch
+  phase2-outreach-generation). This is NOT one of the SRS's original 5
+  checkpoints — the SRS has no FRs and no build prompt for outreach, only
+  a name in the architecture sketch (agents/outreach_agent.py,
+  agents/prompts/outreach_email.md). User picked this as the Phase 2
+  priority per the SRS's own "decide on Phase 2 priorities" closing note.
+  Scope decision: only HOT/WARM-bucket leads get an outreach draft
+  (COLD leads have fine websites, pitching them wastes LLM calls).
+  Refactored shared logic out of verdict.py into agents/providers.py
+  (build_providers()) and agents/json_utils.py (parse_json_object()) so
+  the new agents/outreach_agent.py doesn't duplicate it — verdict.py's
+  existing tests passed unchanged after the refactor, confirming it was
+  behavior-preserving. New agents/prompts/outreach_email.md is a versioned
+  prompt template (double-brace {{placeholders}} replaced via str.replace,
+  not .format(), since the prompt itself needs literal JSON-instruction
+  braces) generating a 120-180 word email with subject+body, signed
+  "[Your Name]" as a placeholder (not an invented persona — the real user
+  signs it). get_outreach_email() sends text-only (no screenshot resend —
+  the verdict's reasoning already distilled the visual issue into text).
+  Found and fixed two real JSON-parsing bugs surfaced by live runs (not
+  hypothetical): (1) models often emit literal newlines inside JSON string
+  values instead of escaping them as \n, which strict json.loads rejects
+  — fixed via json.loads(text, strict=False); (2) models sometimes append
+  a stray trailing "}" after the valid object closes, which json.loads
+  rejects as "Extra data" — fixed by replacing the old regex-based
+  extraction with json.JSONDecoder().raw_decode(), which parses the first
+  valid JSON value and ignores trailing garbage. Both fixes live in the
+  shared agents/json_utils.py, benefiting verdict.py too. Live full
+  pipeline run: 20 businesses, 8 HOT/WARM leads, 7/8 outreach drafts
+  parsed successfully on first or second attempt, 1/8 fell back safely
+  after both attempts failed (confirmed via isolated re-testing that this
+  is normal LLM response variance, not a parsing bug — the same business
+  succeeded 4/4 times when retried separately). Manually read 2 full
+  drafts: genuinely specific and grounded (one referenced the business's
+  actual measured load time and missing SSL from the real audit data,
+  not generic filler).
 
 ## Known gotchas
 - GEMINI_KEY_1 not configured yet — Router currently only has groq +

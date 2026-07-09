@@ -1,42 +1,15 @@
 import base64
-import json
-import re
 from pathlib import Path
 
-from leadradar.core.config import settings
-from leadradar.llm.router import ProviderConfig, Router, RouterExhaustedError
+from leadradar.agents.json_utils import parse_json_object
+from leadradar.agents.providers import build_providers
+from leadradar.llm.router import Router, RouterExhaustedError
 
 FALLBACK_VERDICT = {
     "needs_redesign": True,
     "reasoning": "Could not get a verdict from the LLM.",
     "error": "verdict_parse_failed",
 }
-
-
-def _build_vision_providers() -> list[ProviderConfig]:
-    providers: list[ProviderConfig] = []
-
-    groq_keys = [k for k in [settings.groq_key_1, settings.groq_key_2] if k]
-    if groq_keys:
-        providers.append(
-            {"name": "groq", "keys": groq_keys, "model": "meta-llama/llama-4-scout-17b-16e-instruct"}
-        )
-
-    if settings.gemini_key_1:
-        providers.append(
-            {"name": "gemini", "keys": [settings.gemini_key_1], "model": "gemini-2.0-flash"}
-        )
-
-    if settings.openrouter_key_1:
-        providers.append(
-            {
-                "name": "openrouter",
-                "keys": [settings.openrouter_key_1],
-                "model": "nvidia/nemotron-nano-12b-v2-vl:free",
-            }
-        )
-
-    return providers
 
 
 def _build_prompt(business: dict, audit_result: dict) -> str:
@@ -61,28 +34,9 @@ def _build_prompt(business: dict, audit_result: dict) -> str:
     )
 
 
-def _try_json_loads(text: str) -> dict | None:
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return None
-
-
 def _parse_verdict(raw: str) -> dict | None:
-    text = raw.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.lower().startswith("json"):
-            text = text[4:]
-        text = text.strip()
-
-    data = _try_json_loads(text)
+    data = parse_json_object(raw)
     if data is None:
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            data = _try_json_loads(match.group(0))
-
-    if not isinstance(data, dict):
         return None
 
     needs_redesign = data.get("needs_redesign")
@@ -94,7 +48,7 @@ def _parse_verdict(raw: str) -> dict | None:
 
 
 def get_verdict(business: dict, audit_result: dict) -> dict:
-    providers = _build_vision_providers()
+    providers = build_providers()
     if not providers:
         return {
             "needs_redesign": True,
