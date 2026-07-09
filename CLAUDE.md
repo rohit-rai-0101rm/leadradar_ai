@@ -33,6 +33,28 @@ neighborhood with no/poor websites, audit them, score them, output JSON.
   real businesses, 6 with no website (e.g. Mokai Cafe Chapel Road, Elco Veg
   Restaurant, Miya Kebabs) — confirms the tool finds genuine leads.
 
+- 2026-07-10: Checkpoint 3 done (branch checkpoint-3-website-audit) —
+  Website Audit tool built: src/leadradar/tools/web_audit.py
+  (audit_website) + src/leadradar/tools/screenshot.py
+  (capture_screenshot, filenames under ./screenshots/ as
+  {slugified_business_name}_{short_url_hash}.png for easy identification —
+  audit_website() and capture_screenshot() both take an optional `name`
+  param, passed through from business["name"] in run_discovery.py).
+  Launches a fresh Chromium instance per call via Playwright sync API —
+  simple over optimal for MVP; revisit browser reuse if a full run gets
+  slow. Extended beyond the SRS's literal Checkpoint 3 return shape to
+  also include has_mobile_viewport (FR-2.3), decided explicitly since the
+  SRS text was inconsistent between FR-2.3 and the Checkpoint 3 prompt.
+  Null-website skip logic (FR-2.1) lives in the caller
+  (scripts/run_discovery.py), not inside audit_website() itself, keeping
+  the tool a pure "given a URL, audit it" function. Wired into
+  run_discovery.py: each business now gets a business["audit"] dict.
+  Live run against real Checkpoint 2 Bandra data: 20 businesses processed
+  in ~44s (well under the 5-minute NFR-3 budget), 14 real screenshots
+  saved, 6 no-website businesses correctly skipped without invoking
+  Playwright, 0 websites failed to load. Caught a real signal too: "Lucky
+  Restaurant" loaded fine but over plain http (has_ssl=False).
+
 ## Known gotchas
 - GEMINI_KEY_1 not configured yet — Router currently only has groq +
   openrouter in its provider list until that's added.
@@ -46,3 +68,7 @@ neighborhood with no/poor websites, audit them, score them, output JSON.
   describes). Fine for MVP scale (~20 businesses/run) but multi-call
   pagination would be needed to scale beyond one `searchNearby` call per
   area in a later phase.
+- web_audit.py launches a new browser per audit_website() call rather than
+  reusing one browser across a whole run — simplest correct option for
+  now; if run_discovery.py ever creeps close to the 5-minute NFR-3 budget
+  with a larger batch, switch to one shared browser + per-site pages.
