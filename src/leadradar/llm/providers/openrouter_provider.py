@@ -1,6 +1,6 @@
 import httpx
 
-from leadradar.llm.providers.base import AuthError, Provider, RateLimitError
+from leadradar.llm.providers.base import AuthError, Provider, RateLimitError, openai_style_content
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -8,13 +8,15 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 class OpenRouterProvider(Provider):
     name = "openrouter"
 
-    def complete(self, prompt: str) -> str:
+    def complete(self, prompt: str, image_base64: str | None = None) -> str:
         response = httpx.post(
             OPENROUTER_URL,
             headers={"Authorization": f"Bearer {self.key}"},
             json={
                 "model": self.model,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": [
+                    {"role": "user", "content": openai_style_content(prompt, image_base64)}
+                ],
             },
             timeout=30,
         )

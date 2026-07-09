@@ -1,6 +1,6 @@
 import httpx
 
-from leadradar.llm.providers.base import AuthError, Provider, RateLimitError
+from leadradar.llm.providers.base import AuthError, Provider, RateLimitError, openai_style_content
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -8,13 +8,15 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 class GroqProvider(Provider):
     name = "groq"
 
-    def complete(self, prompt: str) -> str:
+    def complete(self, prompt: str, image_base64: str | None = None) -> str:
         response = httpx.post(
             GROQ_URL,
             headers={"Authorization": f"Bearer {self.key}"},
             json={
                 "model": self.model,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": [
+                    {"role": "user", "content": openai_style_content(prompt, image_base64)}
+                ],
             },
             timeout=30,
         )

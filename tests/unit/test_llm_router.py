@@ -129,3 +129,27 @@ def test_router_skips_keys_already_cooling_down(monkeypatch):
 
     assert result == "used fresh key"
     assert len(calls) == 1
+
+
+def test_router_forwards_image_base64_to_provider(monkeypatch):
+    captured_bodies = []
+
+    def fake_post(url, *args, **kwargs):
+        captured_bodies.append(kwargs["json"])
+        return FakeResponse(
+            200, json_data={"choices": [{"message": {"content": "described the image"}}]}
+        )
+
+    monkeypatch.setattr("httpx.post", fake_post)
+
+    router = Router(
+        providers=[{"name": "groq", "keys": ["groq-key-1"], "model": "llama-4-scout"}]
+    )
+
+    result = router.complete("describe this screenshot", image_base64="ZmFrZS1pbWFnZS1ieXRlcw==")
+
+    assert result == "described the image"
+    content = captured_bodies[0]["messages"][0]["content"]
+    assert isinstance(content, list)
+    assert content[0] == {"type": "text", "text": "describe this screenshot"}
+    assert content[1]["image_url"]["url"] == "data:image/png;base64,ZmFrZS1pbWFnZS1ieXRlcw=="
