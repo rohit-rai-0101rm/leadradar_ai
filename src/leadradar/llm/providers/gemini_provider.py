@@ -8,11 +8,15 @@ GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:ge
 class GeminiProvider(Provider):
     name = "gemini"
 
-    def complete(self, prompt: str) -> str:
+    def complete(self, prompt: str, image_base64: str | None = None) -> str:
+        parts = [{"text": prompt}]
+        if image_base64 is not None:
+            parts.append({"inline_data": {"mime_type": "image/png", "data": image_base64}})
+
         response = httpx.post(
             GEMINI_URL.format(model=self.model),
             params={"key": self.key},
-            json={"contents": [{"parts": [{"text": prompt}]}]},
+            json={"contents": [{"parts": parts}]},
             timeout=30,
         )
         if response.status_code == 429:

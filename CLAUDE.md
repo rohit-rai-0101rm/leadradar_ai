@@ -55,14 +55,41 @@ neighborhood with no/poor websites, audit them, score them, output JSON.
   Playwright, 0 websites failed to load. Caught a real signal too: "Lucky
   Restaurant" loaded fine but over plain http (has_ssl=False).
 
+- 2026-07-10: Checkpoint 4 done (branch checkpoint-4-llm-verdict) — LLM
+  Verdict on screenshots. Extended Provider.complete()/Router.complete()
+  with an optional image_base64 param (base.py, groq/openrouter build
+  OpenAI-style multimodal content via new openai_style_content() helper;
+  gemini builds an inline_data part — Gemini path still untested, no key).
+  New src/leadradar/agents/verdict.py: get_verdict(business, audit_result)
+  always calls the LLM (text signals always sent per FR-2.4's literal
+  wording), attaching the screenshot as an image only when
+  audit_result["screenshot_path"] is set. Vision models validated live
+  before building: Groq meta-llama/llama-4-scout-17b-16e-instruct (worked
+  instantly, even on a 6.4MB screenshot) and OpenRouter
+  nvidia/nemotron-nano-12b-v2-vl:free (several other "free" vision model
+  IDs guessed from memory 404'd — OpenRouter's free lineup shifts often,
+  had to query GET /api/v1/models live to find what's actually available).
+  JSON parsing strips markdown code fences and falls back to regex-
+  extracting the first {...} block; retries once on parse failure per the
+  SRS, then returns a safe fallback verdict (needs_redesign=True,
+  error="verdict_parse_failed") rather than crashing the run — same
+  NFR-2 philosophy as the Router and web_audit.py. Wired into
+  run_discovery.py; full live pipeline (discover→audit→verdict) on real
+  Bandra data: 20 businesses in ~78s (well under NFR-3's 5-minute budget),
+  8/20 flagged needing redesign. Spot-checked verdicts show genuine visual
+  grounding, not boilerplate (e.g. correctly identified "Coming Soon"
+  placeholder content on one real site, and an Instagram loading spinner
+  on another).
+
 ## Known gotchas
 - GEMINI_KEY_1 not configured yet — Router currently only has groq +
-  openrouter in its provider list until that's added.
-- Live smoke test succeeded on the first try (Groq didn't fail), so a
-  *real* 429 fallback still hasn't been observed — only the mocked one in
-  tests/unit/test_llm_router.py. SRS Definition-of-Done wants at least one
-  real quota-exhaustion event witnessed; revisit this once free-tier usage
-  climbs in later checkpoints.
+  openrouter in its provider list until that's added. Gemini's image
+  support (inline_data) in gemini_provider.py is implemented but untested.
+- RESOLVED (2026-07-10): a real 429 fallback has now been observed live —
+  during the Checkpoint 4 full-pipeline run, Groq genuinely rate-limited
+  mid-run and the Router fell back to OpenRouter successfully, satisfying
+  the SRS's Definition-of-Done requirement for a real (not simulated)
+  quota-exhaustion event.
 - Places API (New) `searchNearby` caps maxResultCount at 20 per call and
   has no next-page-token pagination (unlike the legacy API the SRS
   describes). Fine for MVP scale (~20 businesses/run) but multi-call

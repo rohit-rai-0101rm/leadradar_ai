@@ -32,7 +32,7 @@ class Router:
         self.providers = providers
         self.cooldown_minutes = cooldown_minutes
 
-    def complete(self, prompt: str) -> str:
+    def complete(self, prompt: str, image_base64: str | None = None) -> str:
         for provider_config in self.providers:
             provider_name = provider_config["name"]
             provider_cls = PROVIDER_CLASSES[provider_name]
@@ -42,7 +42,7 @@ class Router:
 
                 provider = provider_cls(key=key, model=provider_config["model"])
                 try:
-                    return provider.complete(prompt)
+                    return provider.complete(prompt, image_base64)
                 except (RateLimitError, AuthError) as exc:
                     reason = "rate_limit" if isinstance(exc, RateLimitError) else "auth_error"
                     cooldown.mark_cooling_down(provider_name, key, minutes=self.cooldown_minutes)
