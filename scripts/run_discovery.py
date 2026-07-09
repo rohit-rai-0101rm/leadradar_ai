@@ -26,7 +26,7 @@ NO_WEBSITE_AUDIT = {
 def audit_businesses(businesses: list[dict]) -> None:
     for business in businesses:
         if business["website"]:
-            business["audit"] = audit_website(business["website"])
+            business["audit"] = audit_website(business["website"], name=business["name"])
         else:
             business["audit"] = dict(NO_WEBSITE_AUDIT)
 

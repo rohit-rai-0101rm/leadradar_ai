@@ -36,7 +36,10 @@ neighborhood with no/poor websites, audit them, score them, output JSON.
 - 2026-07-10: Checkpoint 3 done (branch checkpoint-3-website-audit) —
   Website Audit tool built: src/leadradar/tools/web_audit.py
   (audit_website) + src/leadradar/tools/screenshot.py
-  (capture_screenshot, hash-based filenames under ./screenshots/).
+  (capture_screenshot, filenames under ./screenshots/ as
+  {slugified_business_name}_{short_url_hash}.png for easy identification —
+  audit_website() and capture_screenshot() both take an optional `name`
+  param, passed through from business["name"] in run_discovery.py).
   Launches a fresh Chromium instance per call via Playwright sync API —
   simple over optimal for MVP; revisit browser reuse if a full run gets
   slow. Extended beyond the SRS's literal Checkpoint 3 return shape to

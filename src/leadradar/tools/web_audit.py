@@ -15,7 +15,7 @@ VIEWPORT_CHECK_JS = """
 """
 
 
-def audit_website(url: str, timeout_ms: int = DEFAULT_TIMEOUT_MS) -> dict:
+def audit_website(url: str, timeout_ms: int = DEFAULT_TIMEOUT_MS, name: str | None = None) -> dict:
     result = {
         "loaded": False,
         "load_time_ms": None,
@@ -41,7 +41,7 @@ def audit_website(url: str, timeout_ms: int = DEFAULT_TIMEOUT_MS) -> dict:
                 result["load_time_ms"] = int((time.perf_counter() - start) * 1000)
                 result["has_ssl"] = page.url.startswith("https://")
                 result["has_mobile_viewport"] = page.evaluate(VIEWPORT_CHECK_JS)
-                result["screenshot_path"] = capture_screenshot(page, url)
+                result["screenshot_path"] = capture_screenshot(page, url, name)
             finally:
                 browser.close()
     except Exception as exc:
