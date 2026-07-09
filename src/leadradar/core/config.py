@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     groq_key_2: str | None = None
     gemini_key_1: str | None = None
     openrouter_key_1: str | None = None
+    google_places_key: str | None = None
 
 
 settings = Settings()
