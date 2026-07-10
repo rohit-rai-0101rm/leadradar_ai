@@ -1,13 +1,21 @@
-"""Full pipeline entrypoint: discovers real restaurants in Bandra, Mumbai,
-audits each website, gets an LLM verdict, scores each business as a lead,
-generates outreach email drafts for HOT/WARM leads, and writes the results
-to output/leads_{timestamp}.json.
+"""Full pipeline entrypoint: discovers real businesses of a given category in
+a given area, audits each website, gets an LLM verdict, scores each business
+as a lead, generates outreach email drafts for HOT/WARM leads, and writes
+the results to output/leads_{category}_{location}_{timestamp}.json.
 
-Run with: uv run python scripts/run_discovery.py
+Run with:
+  uv run python scripts/run_discovery.py --category beauty_salon \
+      --lat 19.1358 --lng 72.8262 --location-name "Andheri West, Mumbai"
+
+All flags are optional and default to restaurants in Bandra, Mumbai.
+Category must be a valid Google Places "Table A" type
+(https://developers.google.com/maps/documentation/places/web-service/place-types).
 Requires GOOGLE_PLACES_KEY in .env, plus at least one LLM provider key.
 """
 
+import argparse
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,10 +25,11 @@ from leadradar.tools.places_client import discover_businesses
 from leadradar.tools.scoring_rules import score_lead
 from leadradar.tools.web_audit import audit_website
 
-BANDRA_LAT = 19.0596
-BANDRA_LNG = 72.8295
-RADIUS_M = 3000
-CATEGORY = "restaurant"
+DEFAULT_LAT = 19.0596
+DEFAULT_LNG = 72.8295
+DEFAULT_RADIUS_M = 3000
+DEFAULT_CATEGORY = "restaurant"
+DEFAULT_LOCATION_NAME = "Bandra, Mumbai"
 
 OUTPUT_DIR = Path("output")
 OUTREACH_BUCKETS = ("HOT", "WARM")
@@ -63,25 +72,64 @@ def outreach_businesses(businesses: list[dict]) -> None:
             business["outreach"] = None
 
 
-def write_output_json(businesses: list[dict]) -> Path:
+def _slugify(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+
+
+def write_output_json(businesses: list[dict], category: str, location_name: str) -> Path:
     OUTPUT_DIR.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = OUTPUT_DIR / f"leads_{timestamp}.json"
+    output_path = (
+        OUTPUT_DIR / f"leads_{_slugify(category)}_{_slugify(location_name)}_{timestamp}.json"
+    )
 
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "category": category,
+        "location_name": location_name,
         "businesses": businesses,
     }
     output_path.write_text(json.dumps(payload, indent=2))
     return output_path
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--category",
+        default=DEFAULT_CATEGORY,
+        help=f"Google Places 'Table A' type to search for (default: {DEFAULT_CATEGORY})",
+    )
+    parser.add_argument(
+        "--lat", type=float, default=DEFAULT_LAT, help=f"Latitude (default: {DEFAULT_LAT})"
+    )
+    parser.add_argument(
+        "--lng", type=float, default=DEFAULT_LNG, help=f"Longitude (default: {DEFAULT_LNG})"
+    )
+    parser.add_argument(
+        "--radius",
+        type=int,
+        default=DEFAULT_RADIUS_M,
+        help=f"Search radius in meters (default: {DEFAULT_RADIUS_M})",
+    )
+    parser.add_argument(
+        "--location-name",
+        default=DEFAULT_LOCATION_NAME,
+        help=f"Human-readable area label for output/console (default: {DEFAULT_LOCATION_NAME!r})",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
+    category = args.category
+    location_name = args.location_name
+
     businesses = discover_businesses(
-        lat=BANDRA_LAT, lng=BANDRA_LNG, radius_m=RADIUS_M, category=CATEGORY
+        lat=args.lat, lng=args.lng, radius_m=args.radius, category=category
     )
 
-    print(f"Found {len(businesses)} businesses in Bandra, Mumbai — auditing websites...\n")
+    print(f"Found {len(businesses)} {category} businesses in {location_name} — auditing websites...\n")
     audit_businesses(businesses)
 
     print("Getting LLM verdicts...\n")
@@ -148,7 +196,7 @@ def main() -> None:
         if business["outreach"] is not None:
             print(f"- {business['name']}: \"{business['outreach']['subject']}\"")
 
-    output_path = write_output_json(businesses)
+    output_path = write_output_json(businesses, category, location_name)
     print(f"\nWrote {len(businesses)} leads to {output_path}")
 
 

@@ -152,10 +152,77 @@ Docker, CI) is explicitly Phase 2+ per the SRS.
   actual measured load time and missing SSL from the real audit data,
   not generic filler).
 
+- 2026-07-11: Multi-vertical support. User wants to target multiple
+  business categories (restaurants converted well in early live testing;
+  hospitals were tried and rejected — see gotchas) instead of just
+  restaurants in Bandra. Considered a separate YouTube/influencer
+  discovery vertical first, decided against it (different platform,
+  different audit signals, would double scope before the first vertical
+  is even validated) — staying restaurant-shaped businesses only, just
+  swappable category + location. scripts/run_discovery.py's hardcoded
+  BANDRA_LAT/BANDRA_LNG/RADIUS_M/CATEGORY constants replaced with argparse
+  flags (--category, --lat, --lng, --radius, --location-name), all
+  optional and defaulting to the original restaurant/Bandra values so the
+  zero-arg invocation is unchanged. Output filename now
+  leads_{category}_{location}_{timestamp}.json (slugified) so different
+  category/location runs never collide. Added config/target_categories.json:
+  a plain reference list of Google Places categories judged likely to
+  convert (owner-operated, single decision-maker, personal-mobile-as-
+  contact — same profile that made restaurants work) plus an explicit
+  "avoid" list with the hospital finding below. Live-tested with
+  `--category beauty_salon --lat 19.1358 --lng 72.8262 --location-name
+  "Andheri West, Mumbai" --radius 2000`: 20 salons found, pipeline
+  completed end-to-end with real outreach drafts, confirming the flags
+  actually thread through discovery → audit → verdict → scoring →
+  outreach → output correctly.
+
+- 2026-07-11: Fixed a real crash surfaced by the beauty_salon live test —
+  OpenRouter free-tier models occasionally return HTTP 200 with an error
+  body instead of the expected `choices` key (not a 429, so the existing
+  RateLimitError/AuthError handling didn't catch it). This raised an
+  unhandled KeyError that crashed the entire run instead of falling back
+  to the next provider, violating the NFR-2 "never crash on single
+  failure" pattern the rest of the codebase follows. Fixed by adding
+  `ProviderError` (llm/providers/base.py) for malformed/missing-completion
+  responses, checked explicitly in all three providers (openrouter, groq,
+  gemini — same latent gap existed in all, fixed for consistency even
+  though only openrouter had triggered it live) before indexing into the
+  response, and wired into Router.complete()'s except clause alongside
+  RateLimitError/AuthError so it triggers the same cooldown+fallback path.
+  Confirmed via full 32-test unit suite (unaffected) and a second live run
+  of the same beauty_salon/Andheri test: the same provider_error condition
+  recurred but was now caught and logged (`llm_router_fallback
+  provider=openrouter reason=provider_error`) instead of crashing the
+  process, and the run completed end-to-end.
+
 ## Known gotchas
-- GEMINI_KEY_1 not configured yet — Router currently only has groq +
-  openrouter in its provider list until that's added. Gemini's image
-  support (inline_data) in gemini_provider.py is implemented but untested.
+- Category choice matters a lot for conversion odds, confirmed via a live
+  `--category hospital` test in Bandra (2026-07-10): 6/7 HOT/WARM leads had
+  only a front-desk landline on file (not WhatsApp-able), and the single
+  HOT lead with a real mobile number aside, the rest included a municipal
+  government hospital with no single decision-maker — institutional
+  categories don't fit this tool's outreach model even when the website
+  signals score them as strong leads. Restaurants and (per the live
+  beauty_salon test) salons/clinics fit better: owner-operated, personal
+  mobile as the listed contact. See config/target_categories.json for the
+  running recommended/avoid list.
+- RESOLVED (2026-07-11): 3 real Gemini keys added (GEMINI_KEY_1/2/3),
+  config.py and agents/providers.py extended to pick up all three (same
+  multi-key pattern as groq_key_1/2), giving the router a third full
+  fallback provider. Live-tested directly against the real API before
+  wiring in: `gemini-2.0-flash` (the model already hardcoded in
+  providers.py) returned 429 RESOURCE_EXHAUSTED with `limit: 0` on all
+  three keys — not a real rate limit, that model simply isn't available
+  on this account's free tier. `gemini-1.5-flash` 404'd (deprecated).
+  `gemini-2.5-flash` worked cleanly on both a text-only call and a real
+  vision call against an actual screenshot (assure_clinic screenshot from
+  the beauty_salon test run) — description was genuinely grounded in the
+  image content, not generic. Switched providers.py to `gemini-2.5-flash`.
+  Also fixed scripts/smoke_test_router.py, which had its own stale
+  duplicate `build_providers()` predating the agents/providers.py
+  extraction (Phase 2) — still on gemini_key_1-only and the broken
+  gemini-2.0-flash model name. Now imports the real build_providers()
+  instead of duplicating it, so it can't drift out of sync again.
 - RESOLVED (2026-07-10): a real 429 fallback has now been observed live —
   during the Checkpoint 4 full-pipeline run, Groq genuinely rate-limited
   mid-run and the Router fell back to OpenRouter successfully, satisfying

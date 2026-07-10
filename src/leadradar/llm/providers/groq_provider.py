@@ -1,6 +1,12 @@
 import httpx
 
-from leadradar.llm.providers.base import AuthError, Provider, RateLimitError, openai_style_content
+from leadradar.llm.providers.base import (
+    AuthError,
+    Provider,
+    ProviderError,
+    RateLimitError,
+    openai_style_content,
+)
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -25,4 +31,8 @@ class GroqProvider(Provider):
         if response.status_code in (401, 403):
             raise AuthError(f"groq key auth failed: {response.text}")
         response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+        data = response.json()
+        choices = data.get("choices")
+        if not choices:
+            raise ProviderError(f"groq response missing choices: {data}")
+        return choices[0]["message"]["content"]

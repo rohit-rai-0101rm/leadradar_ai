@@ -1,6 +1,6 @@
 import httpx
 
-from leadradar.llm.providers.base import AuthError, Provider, RateLimitError
+from leadradar.llm.providers.base import AuthError, Provider, ProviderError, RateLimitError
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
@@ -24,4 +24,8 @@ class GeminiProvider(Provider):
         if response.status_code in (401, 403):
             raise AuthError(f"gemini key auth failed: {response.text}")
         response.raise_for_status()
-        return response.json()["candidates"][0]["content"]["parts"][0]["text"]
+        data = response.json()
+        candidates = data.get("candidates")
+        if not candidates:
+            raise ProviderError(f"gemini response missing candidates: {data}")
+        return candidates[0]["content"]["parts"][0]["text"]

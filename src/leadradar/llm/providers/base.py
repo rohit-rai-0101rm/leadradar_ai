@@ -22,6 +22,12 @@ class AuthError(Exception):
     """Raised when a provider returns a 401/403 auth-failure response."""
 
 
+class ProviderError(Exception):
+    """Raised when a provider returns a 2xx response with an unexpected/missing
+    completion shape (e.g. OpenRouter free-tier models returning a 200 with an
+    error body instead of `choices`)."""
+
+
 class Provider(ABC):
     name: str
 

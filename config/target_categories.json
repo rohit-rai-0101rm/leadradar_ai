@@ -1,0 +1,24 @@
+{
+  "notes": "Google Places 'Table A' type values for --category. Picked for high conversion odds: owner-operated, single decision-maker, personal mobile number usually listed as contact (unlike hospitals/institutions).",
+  "recommended": [
+    { "category": "beauty_salon", "reason": "Owner-operated, personal mobile as contact" },
+    { "category": "hair_care", "reason": "Owner-operated, personal mobile as contact" },
+    { "category": "gym", "reason": "Single owner/manager, budget-conscious, cares about local discovery" },
+    { "category": "spa", "reason": "Owner-operated, image-conscious, likely underinvested in web presence" },
+    { "category": "dentist", "reason": "Single practitioner decision-maker, has budget" },
+    { "category": "clothing_store", "reason": "Boutique-style, owner-operated" },
+    { "category": "bakery", "reason": "Same profile as restaurants, which converted well in testing" },
+    { "category": "cafe", "reason": "Same profile as restaurants, which converted well in testing" },
+    { "category": "jewelry_store", "reason": "Owner-operated, has budget" },
+    { "category": "real_estate_agency", "reason": "Small agency/broker, single decision-maker" },
+    { "category": "photographer", "reason": "Solo/small business, cares about online presence directly" },
+    { "category": "yoga_studio", "reason": "Owner-operated, image-conscious" },
+    { "category": "pet_store", "reason": "Owner-operated, personal mobile as contact" }
+  ],
+  "avoid": [
+    { "category": "hospital", "reason": "Tested live — mostly landline contacts (no WhatsApp), no single decision-maker, government facilities have no budget for freelance work" },
+    { "category": "bank", "reason": "Institutional, no single decision-maker" },
+    { "category": "school", "reason": "Institutional, no single decision-maker" },
+    { "category": "insurance_agency", "reason": "Often franchise/corporate-affiliated, not independently owned" }
+  ]
+}

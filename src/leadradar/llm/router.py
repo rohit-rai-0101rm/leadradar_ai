@@ -3,7 +3,7 @@ import time
 from typing import TypedDict
 
 from leadradar.llm import cooldown
-from leadradar.llm.providers.base import AuthError, Provider, RateLimitError
+from leadradar.llm.providers.base import AuthError, Provider, ProviderError, RateLimitError
 from leadradar.llm.providers.gemini_provider import GeminiProvider
 from leadradar.llm.providers.groq_provider import GroqProvider
 from leadradar.llm.providers.openrouter_provider import OpenRouterProvider
@@ -43,8 +43,13 @@ class Router:
                 provider = provider_cls(key=key, model=provider_config["model"])
                 try:
                     return provider.complete(prompt, image_base64)
-                except (RateLimitError, AuthError) as exc:
-                    reason = "rate_limit" if isinstance(exc, RateLimitError) else "auth_error"
+                except (RateLimitError, AuthError, ProviderError) as exc:
+                    if isinstance(exc, RateLimitError):
+                        reason = "rate_limit"
+                    elif isinstance(exc, AuthError):
+                        reason = "auth_error"
+                    else:
+                        reason = "provider_error"
                     cooldown.mark_cooling_down(provider_name, key, minutes=self.cooldown_minutes)
                     logger.warning(
                         "llm_router_fallback provider=%s reason=%s timestamp=%s",
